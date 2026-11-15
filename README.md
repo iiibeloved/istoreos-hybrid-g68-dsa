@@ -39,6 +39,15 @@
 
 ---
 
+## 目标与不变量（DSA 版）
+
+1. **基座 = 上游 iStoreOS 官方**（`istoreos-24.10`），每次构建 clone 最新提交；`upstream-watch` / `check-upstream` 在上游变化时自动触发构建；
+2. **网络 = ABC 验证的 DSA 方案**（RTL8367S 5 口：lan1-4 + wan，CPU=gmac0 RGMII）；
+3. **长按 Reset → MaskROM**：u-boot overlay（`boot_mode.c` + ADC defconfig + 板级 dts）与三层守卫，来自本杂交设备层；
+4. **包集 = 全量 + 上游优先去重**：每次构建 `package-guard` 以上游 defconfig 为基准比对，重复项自动注释并回写；
+5. **商城 / quickstart 必须跟随上游**：来自 store / packages / luci feeds，仓库内不固化、不做整文件覆盖；
+6. **ABC 默认可用**：网络 dts、DSA 驱动与 `local-mac-address` 保持 ABC 原样（不从仓库侧"优化"）。
+
 ## 包去重规则（上游优先，强制）
 
 1. **基准 = iStoreOS 官方包集**（目标 `make defconfig` 结果）；
