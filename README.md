@@ -46,6 +46,13 @@
 3. 每次构建 `prepare` 阶段自动执行 `package-guard` 对照上游包清单，重复项自动注释并回写 `configs/`；
 4. 典型例子：`dnsmasq-full`（PROVIDES dnsmasq）→ 保留上游 `dnsmasq`；`luci-ssl-openssl`/`libustream-openssl` → 保留基座变体；`samba4`、WiFi 栈不选。
 
+## 商城 / quickstart 跟随上游
+
+- `luci-app-store`（商城）来自上游 **store feed**（linkease/istore，main 分支）；
+- `quickstart` / `luci-app-quickstart` 来自上游 **packages / luci feed**；
+- 仓库内**不固化**这两者的代码或翻译覆盖（仅对无官方中文的第三方应用做条件 i18n）；
+- 每次构建 `feeds update` 拉取最新上游版本；如与上游包重复，按去重规则**以上游为准**。
+
 ## 网络模型（RTL8367S DSA，5 口全用）
 
 | 逻辑接口 | 硬件 | 角色 |
