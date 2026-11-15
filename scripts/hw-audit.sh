@@ -100,7 +100,7 @@ fi
 
 if dts_has 'sgmii-mac-sel'; then
 	if [ -n "$(patches_grep 'sgmii-mac-sel')" ]; then
-		ok "dts 使用 rockchip,sgmii-mac-sel，且由补丁提供"
+		ok "dts 使用 rockchip,sgmii-mac-sel，且由 915 补丁在 dwmac-rk 中编程"
 	elif [ -n "$KV" ] && ver_ge 6.6.144; then
 		# 注意：此处不能断言 iStoreOS 已内置该属性。
 		# 912 被删除的依据只是「hunk 1/4 与 iStoreOS 源码上下文冲突」，

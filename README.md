@@ -39,6 +39,19 @@
 
 ---
 
+## 网络模型（RTL8367S DSA，5 口全用）
+
+| 逻辑接口 | 硬件 | 角色 |
+|---|---|---|
+| `lan1` ~ `lan4` | RTL8367S port@0~3 | LAN（同一 br-lan，硬件转发） |
+| `wan` | RTL8367S port@4 | WAN（DHCP / PPPoE） |
+| `port@7 (cpu)` | → gmac0，RGMII fixed-link 1000 | 5 口共用的 CPU 上行 |
+
+- 4 LAN + 1 WAN，**5 个网口全部可用**；
+- 5 口共享 1Gbps CPU 上行（交换机内部互访不受限）；
+- 首次启动后可用 `ip -br link` 查看 `lan1..lan4/wan`；插拔网线可确认物理口与逻辑口对应关系；
+- MAC 地址在启动时由板级脚本从 eMMC CID 生成（不在 dts 中硬编码）。
+
 ## 下载
 
 **最新 Release**：<https://github.com/iiibeloved/istoreos-hybrid-g68/releases/latest>
@@ -72,6 +85,7 @@ sha256: 2952f78d6398a83538551ad9c7af2db8c37e9e12f6649afef41a733fe36adab0
 5. 「获取当前存储」→「**擦除所有**」
 6. 「下载镜像」选择**解压后的 `.img`** → 勾选「**强制按地址写**」→ 执行
 
+> **本仓库的 u-boot 已内置长按 Reset→MaskROM 支持**（overlay + 三层守卫），刷机时无需短接触点。
 > 若长按无效，可用短接触点法兜底（BROM 模式，loader 相同）。
 > 首次启动约 1–2 分钟，之后进入 iStoreOS 初始化向导。
 
