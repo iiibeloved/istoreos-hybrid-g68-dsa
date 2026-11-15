@@ -39,6 +39,13 @@
 
 ---
 
+## 包去重规则（上游优先，强制）
+
+1. **基准 = iStoreOS 官方包集**（目标 `make defconfig` 结果）；
+2. 任何第三方/自定义包与官方**同名**或**同文件**或 **PROVIDES 同名** → **以上游为准**，第三方那条注释或删除；
+3. 每次构建 `prepare` 阶段自动执行 `package-guard` 对照上游包清单，重复项自动注释并回写 `configs/`；
+4. 典型例子：`dnsmasq-full`（PROVIDES dnsmasq）→ 保留上游 `dnsmasq`；`luci-ssl-openssl`/`libustream-openssl` → 保留基座变体；`samba4`、WiFi 栈不选。
+
 ## 网络模型（RTL8367S DSA，5 口全用）
 
 | 逻辑接口 | 硬件 | 角色 |
