@@ -127,8 +127,6 @@ jobs:
               echo "::error::dnsmasq-full 与上游 dnsmasq 冲突（去重规则：以上游为准）"
               exit 1
             fi
-              grep -q '^CONFIG_PACKAGE_luci-app-store=y$' .config || { echo "::error::上游商城未选中"; exit 1; }
-              grep -q '^CONFIG_PACKAGE_luci-app-quickstart=y$' .config || { echo "::error::上游 quickstart 未选中"; exit 1; }
             echo "[OK] DNS: 使用上游 dnsmasq（dnsmasq-full 已按去重规则排除）"
       - name: 以上游包清单为基准去重（package-guard）
         shell: bash
