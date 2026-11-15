@@ -57,7 +57,7 @@
 - 4 LAN + 1 WAN，**5 个网口全部可用**；
 - 5 口共享 1Gbps CPU 上行（交换机内部互访不受限）；
 - 首次启动后可用 `ip -br link` 查看 `lan1..lan4/wan`；插拔网线可确认物理口与逻辑口对应关系；
-- MAC 地址在启动时由板级脚本从 eMMC CID 生成（不在 dts 中硬编码）。
+- dts 中的 `local-mac-address` 为 ABC 参考配置的默认值；LAN/WAN 接口 MAC 由板级脚本按 eMMC CID 生成覆盖（与 iStoreOS 默认行为一致）。
 
 ## 下载
 

@@ -738,30 +738,35 @@
                 reg = <0>;
                 label = "lan1";
                 phy-handle = <&phy0>;
+                local-mac-address = [46 27 be 7a c9 1d];
             };
 
             port@1 {
                 reg = <1>;
                 label = "lan2";
                 phy-handle = <&phy1>;
+                local-mac-address = [46 27 be 7a c9 1e];
             };
 
             port@2 {
                 reg = <2>;
                 label = "lan3";
                 phy-handle = <&phy2>;
+                local-mac-address = [46 27 be 7a c9 1f];
             };
 
             port@3 {
                 reg = <3>;
                 label = "lan4";
                 phy-handle = <&phy3>;
+                local-mac-address = [46 27 be 7a ca 00];
             };
 
             port@4 {
                 reg = <4>;
                 label = "wan";
                 phy-handle = <&phy4>;
+                local-mac-address = [46 27 be 7a ca 01];
             };
 
             port@7 {
@@ -771,6 +776,7 @@
                 phy-mode = "rgmii-id";
                 rx-internal-delay-ps = <2000>;
                 tx-internal-delay-ps = <2000>;
+                local-mac-address = [46 27 be 7a ca 02];
 
                 fixed-link {
                     speed = <1000>;
