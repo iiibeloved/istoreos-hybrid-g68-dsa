@@ -1,0 +1,31 @@
+#!/bin/sh
+# =============================================================================
+#  NSY G68-PLUS 板级网络映射（补充 iStoreOS 上游 02_network 未收录的板型）
+#
+#  board_detect 会按字母序 source /etc/board.d/*，本文件名排在 02_network 之后，
+#  因此只在本文件内覆盖 G68 的映射，不修改上游 02_network 本体 ——
+#  上游更新 02_network 时本文件不受影响，G68 网络映射照旧生效。
+#
+#  拓扑（ABC 验证的 RTL8367S DSA 方案）：
+#    DSA 端口 lan1-lan4 = LAN，wan = WAN，CPU 口 port@7 → gmac0（RGMII）。
+#  MAC：由 eMMC CID 派生（wan=基址，lan=+1）。
+# =============================================================================
+. /lib/functions/uci-defaults.sh
+. /lib/functions/system.sh
+
+board_config_update
+
+case "$(board_name)" in
+nsy,g68-plus)
+	ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4" "wan"
+
+	wan_mac=$(macaddr_generate_from_mmc_cid mmcblk0)
+	lan_mac=$(macaddr_add "$wan_mac" 1)
+	ucidef_set_interface_macaddr "lan" "$lan_mac"
+	ucidef_set_interface_macaddr "wan" "$wan_mac"
+	;;
+esac
+
+board_config_flush
+
+exit 0

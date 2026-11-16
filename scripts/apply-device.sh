@@ -133,33 +133,24 @@ if [ -d "$DEV/files" ]; then
 	say "自定义文件已放置到 $ROOT/files/（$(cd "$DEV/files" && find . -type f | wc -l) 个文件）"
 fi
 
-# ---------- 7.52) 板级网络映射（iStoreOS 02_network 缺 nsy,g68-plus 分支）----------
-NET02="$ROOT/target/linux/rockchip/armv8/base-files/etc/board.d/02_network"
-if [ -f "$NET02" ]; then
-	if grep -q 'nsy,g68-plus' "$NET02"; then
-		say "02_network 已含 nsy,g68-plus 分支（跳过）"
-	else
-		awk 'BEGIN{ins=0}
-		{
-			if (!ins && $0 == "\t*)") {
-				printf "\tnsy,g68-plus)\n\t\tucidef_set_interfaces_lan_wan \"lan1 lan2 lan3 lan4\" \"wan\"\n\t\t;;\n"
-				ins=1
-			}
-			print
-		}' "$NET02" > "$NET02.tmp" && mv "$NET02.tmp" "$NET02"
-		grep -q 'nsy,g68-plus' "$NET02" || die "02_network 结构变化：未找到默认分支，无法插入 G68 映射"
-		say "02_network: 已插入 nsy,g68-plus → LAN=lan1-4 / WAN=wan（DSA）"
-	fi
+# ---------- 7.52) 板级网络映射（独立 board.d 脚本，不改上游 02_network）----------
+# board_detect 按字母序 source /etc/board.d/*，02_network_g68 排在 02_network 之后，
+# 因此可覆盖 G68 映射而不触碰上游文件；上游更新 02_network 时本脚本照旧生效。
+BDSRC="$DEV/board.d/02_network_g68"
+BDDST="$ROOT/target/linux/rockchip/armv8/base-files/etc/board.d"
+if [ -f "$BDSRC" ]; then
+	mkdir -p "$BDDST"
+	cp -f "$BDSRC" "$BDDST/02_network_g68"
+	chmod 0755 "$BDDST/02_network_g68"
+	say "board.d: 已投递 02_network_g68（DSA: lan1-4 / wan）"
 else
-	say "警告: 找不到 $NET02，跳过板级网络映射（uci-defaults 仍会兜底）"
+	die "缺少 $BDSRC（G68 网络映射会缺失，LAN/WAN 不可用）"
 fi
 
-# ---------- 7.53) 内核 DSA 驱动文件（RTL8367S 交换机）----------
-if [ -d "$DEV/kernel-files" ]; then
-	mkdir -p "$ROOT/target/linux/rockchip/files"
-	cp -a "$DEV/kernel-files/." "$ROOT/target/linux/rockchip/files/"
-	say "内核文件已放置: target/linux/rockchip/files/（$(cd "$DEV/kernel-files" && find . -type f | wc -l) 个文件）"
-fi
+# ---------- 7.53) 内核 DSA 驱动：使用主线 6.6 原生 rtl8365mb（支持 RTL8367S）----------
+# 已核验：Linux 6.6.31+ 的 drivers/net/dsa/realtek/rtl8365mb.c 原生支持 RTL8367S，
+# 与 ABC 曾整文件覆盖的版本逐字节一致，因此不再投递驱动文件，避免上游内核升级后失配。
+say "DSA 驱动沿用主线内核 rtl8365mb（无需 overlay）"
 
 # ---------- 7.55) 中文覆盖数据（按已安装应用条件投递）----------
 if [ -d "$DEV/i18n-overlay" ]; then

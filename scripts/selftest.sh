@@ -84,7 +84,22 @@ else
 	bad "找不到 $KDTSX"
 fi
 NET02="$ROOT/target/linux/rockchip/armv8/base-files/etc/board.d/02_network"
-grep -q 'nsy,g68-plus' "$NET02" 2>/dev/null && ok "02_network 含 nsy,g68-plus" || bad "02_network 缺 nsy,g68-plus"
-grep -q 'ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4" "wan"' "$NET02" 2>/dev/null && ok "02_network: LAN=lan1-4 / WAN=wan" || bad "02_network 映射不是 DSA 形式"
-DSADIR="$ROOT/target/linux/rockchip/files/drivers/net/dsa/realtek"
-[ -f "$DSADIR/rtl8365mb.c" ] && ok "DSA 驱动已投递 (rtl8365mb.c)" || bad "缺 DSA 驱动 rtl8365mb.c"
+BDDST="$ROOT/target/linux/rockchip/armv8/base-files/etc/board.d/02_network_g68"
+if [ -f "$BDDST" ]; then
+	ok "board.d/02_network_g68 已投递"
+	cmp -s "$DEV/board.d/02_network_g68" "$BDDST" && ok "映射内容一致" || bad "映射内容不一致"
+	sh -n "$BDDST" && ok "映射脚本语法" || bad "映射脚本语法错误"
+	grep -q 'ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4" "wan"' "$BDDST" \
+		&& ok "映射 LAN=lan1-4 / WAN=wan" || bad "映射不是 DSA 形式"
+else
+	bad "缺 board.d/02_network_g68"
+fi
+# 独立性：上游 02_network 不被打补丁，G68 映射由独立脚本提供
+if grep -q 'nsy,g68-plus' "$NET02" 2>/dev/null; then
+	printf '  [INFO] 上游 02_network 已含 nsy,g68-plus（本仓库映射仍会覆盖，属正常）\n'
+else
+	ok "上游 02_network 保持原样"
+fi
+# DSA 驱动沿用主线 6.6（原生支持 RTL8367S），不应再有整文件覆盖
+[ -e "$ROOT/target/linux/rockchip/files/drivers/net/dsa" ] \
+	&& bad "仍存在 DSA 驱动 overlay（应已移除）" || ok "DSA 驱动沿用主线（无 overlay）"

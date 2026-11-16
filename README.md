@@ -46,7 +46,7 @@
 3. **长按 Reset → MaskROM**：u-boot overlay（`boot_mode.c` + ADC defconfig + 板级 dts）与三层守卫，来自本杂交设备层；
 4. **包集 = 全量 + 上游优先去重**：每次构建 `package-guard` 以上游 defconfig 为基准比对，重复项自动注释并回写；
 5. **商城 / quickstart 必须跟随上游**：来自 store / packages / luci feeds，仓库内不固化、不做整文件覆盖；
-6. **ABC 默认可用**：网络 dts、DSA 驱动与 `local-mac-address` 保持 ABC 原样（不从仓库侧"优化"）。
+6. **ABC 默认可用**：网络 dts 与 `local-mac-address` 保持 ABC 原样（不从仓库侧"优化"）；DSA 驱动直接用主线 6.6 原生 rtl8365mb（已原生支持 RTL8367S，与 ABC 覆盖版本逐字节一致），不再整文件覆盖驱动。
 
 ## 包去重规则（上游优先，强制）
 
@@ -166,6 +166,7 @@ iStoreOS 官方源 (istoreos-24.10)
 device/
   kernel-dts/            G68 内核设备树（SGMII/XPCS、DSA、adc-keys、eMMC）
   kernel-config/         内核配置片段（Realtek DSA 等）
+  board.d/               板级网络映射 02_network_g68（不修改上游 02_network）
   kernel-patches/        910/911/913/914 内核补丁
   uboot/                 u-boot overlay（boot_mode、defconfig、板级 dts、版本守卫）
   i18n-overlay/          中文覆盖（28 个文件，条件投递）
