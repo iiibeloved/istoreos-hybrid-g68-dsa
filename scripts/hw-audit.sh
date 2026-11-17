@@ -64,10 +64,10 @@ echo
 
 echo "== H3 交换机 RTL8367S (DSA) =="
 if dts_has 'rtl8367s|realtek,mdio'; then
-	if k_has CONFIG_NET_DSA_REALTEK_RTL8365MB && k_has CONFIG_NET_DSA_REALTEK_MDIO && k_has CONFIG_NET_DSA_TAG_RTL8_4; then
-		ok "dts 声明 rtl8367s，kernel-config 已含 NET_DSA_REALTEK_* / TAG_RTL8_4"
+	if k_has CONFIG_NET_DSA_REALTEK_RTL8365MB && k_has CONFIG_NET_DSA_REALTEK_MDIO && k_has CONFIG_NET_DSA_TAG_RTL4_A && k_has CONFIG_NET_DSA_TAG_RTL8_4; then
+		ok "dts 声明 rtl8367s，kernel-config 已含 NET_DSA_REALTEK_* / TAG_RTL4_A(驱动实际使用) / TAG_RTL8_4"
 	else
-		miss "dts 声明 rtl8367s，但 kernel-config 缺 NET_DSA_REALTEK_RTL8365MB/MDIO/TAG_RTL8_4（LAN 将不可用）"
+		miss "dts 声明 rtl8367s，但 kernel-config 缺 NET_DSA_REALTEK_RTL8365MB/MDIO/TAG_RTL4_A/TAG_RTL8_4（LAN 将不可用）"
 	fi
 else
 	warn "dts 未发现 rtl8367s 节点（若硬件实际存在需核查 dts）"

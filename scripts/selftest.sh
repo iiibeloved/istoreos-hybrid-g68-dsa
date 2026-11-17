@@ -34,8 +34,9 @@ for f in "$DEV"/kernel-patches/*.patch; do
 	base=$(basename "$f")
 	ls "$ROOT/target/linux/rockchip/patches-6.6/$base" >/dev/null 2>&1 && ok "内核补丁 $base" || bad "缺内核补丁 $base"
 done
-# 关键功能补丁（XPCS / SGMII 2.5G / dwmac）必须存在
-for p in 910 911 913; do
+# 关键功能补丁（XPCS / SGMII 2.5G / dwmac / sgmii-mac-sel）必须存在
+# 915 为 combphy sgmii-mac-sel 修复，缺失会导致 2.5G/SGMII 口异常，必须纳入白名单
+for p in 910 911 913 915; do
 	ls "$ROOT/target/linux/rockchip/patches-6.6/${p}-"*.patch >/dev/null 2>&1 && ok "关键补丁 ${p}-*" || bad "缺关键补丁 ${p}-*"
 done
 
@@ -76,7 +77,9 @@ done < "$DEV/i18n-manifest" 2>/dev/null || true
 echo "== 6. 内核配置对齐（Realtek DSA / RTL8367S）=="
 KCONF="$ROOT/target/linux/rockchip/armv8/config-6.6"
 if [ -f "$KCONF" ]; then
-	for sym in CONFIG_NET_DSA_REALTEK=y CONFIG_NET_DSA_REALTEK_MDIO=y CONFIG_NET_DSA_REALTEK_RTL8365MB=y CONFIG_NET_DSA_TAG_RTL8_4=y; do
+	# rtl8365mb 驱动实际使用 4 字节 tag（RTL4_A）；RTL8_4 供 RTL8366RB 等旧芯片用。
+	# 两者都在 kernel-config 中启用，断言必须覆盖真正被驱动的 RTL4_A，避免误删后仍全绿。
+	for sym in CONFIG_NET_DSA_REALTEK=y CONFIG_NET_DSA_REALTEK_MDIO=y CONFIG_NET_DSA_REALTEK_RTL8365MB=y CONFIG_NET_DSA_TAG_RTL4_A=y CONFIG_NET_DSA_TAG_RTL8_4=y; do
 		grep -qx "$sym" "$KCONF" && ok "内核配置 $sym" || bad "缺少内核配置 $sym"
 	done
 else
