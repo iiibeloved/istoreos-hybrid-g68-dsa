@@ -50,7 +50,7 @@
 - **标准 DSA 网络，5 口独立网卡。** `lan1`~`lan4` / `wan` 各自是独立网口，可分别配置、统计与桥接，语义清晰、便于管理与扩展；4 个 LAN 口默认同属 `br-lan`。
 - **开箱就能上网。** LAN 口 DHCP 服务端、WAN 口 DHCP 客户端默认可用，插上网线即可获取地址。
 - **完整 iStoreOS 生态。** 商店、初始化向导、Docker、SMB 共享、NFS、下载 / 文件工具等全部保留，不是精简固件。
-- **稳定可升级。** 每次构建都以 iStoreOS 官方包清单为基准做去重，与官方同名 / 同文件的第三方包一律让位，避免文件冲突，保证上游更新后仍可重复构建；商店与 quickstart 始终跟随上游，不固化在仓库里。
+- **稳定可升级、可重复构建。** 每次构建以 iStoreOS 官方包清单为基准去重：同名 / 同文件的第三方包一律让位；滚动 feed 锁定到已验证提交、同名包生效来源统一指定、编译前做全包依赖版本校验，防止上游静默漂移导致“这次能编、下次编不过”；商店与 quickstart 始终跟随上游，不固化在仓库里。
 - **多重自动化守卫。** 构建前做静态自检与硬件级交叉审核（DTS ↔ 内核配置 ↔ 包集），并对 u-boot 做源码 / 应用后 / 编译产物三层断言，防止 MaskROM 与网络能力被上游改动悄悄破坏。
 
 ---
@@ -212,13 +212,16 @@ LuCI → 系统 → 备份/升级 → 上传 .img.gz → 勾选「保留配置�
 3. **长按 Reset → MaskROM**：u-boot overlay（`boot_mode.c` + ADC defconfig + 板级 dts）与三层守卫；
 4. **包集 = 全量 + 上游优先去重**：每轮 `package-guard` 以上游 defconfig 为基准比对，重复项自动注释并回写；
 5. **商城 / quickstart 跟随上游**：来自 store / packages / luci feeds，仓库内不固化、不做整文件覆盖；
-6. **设备树与 MAC 保持参考配置原样**：DSA 驱动直接用主线 6.6 原生 `rtl8365mb`（已原生支持 RTL8367S），不整文件覆盖驱动。
+6. **设备树与 MAC 保持参考配置原样**：DSA 驱动直接用主线 6.6 原生 `rtl8365mb`（已原生支持 RTL8367S），不整文件覆盖驱动；
+7. **Feed 防漂移、只交付 squashfs**：滚动 feed 锁到已验证提交、同名包来源固定、依赖版本守卫通过；显式关闭 ext4 rootfs，仅发布 squashfs 镜像（见 10.3）。
 
 ### 10.3 关键机制
 
 - **长按 Reset → MaskROM**：SPL 阶段读 SARADC 通道 0；按住 Reset 上电即写 BROM 下载标志并复位，RKDevTool 直接识别 MaskROM 设备。u-boot 以 overlay-only 覆盖 `src/`，并由三层断言（`download key pressed` / `adc_channel_single_shot` / `BOOT_MODE_REG=0xfdc20200`）守护。
 - **DSA 驱动**：内核符号 `CONFIG_NET_DSA` / `NET_DSA_REALTEK` / `NET_DSA_REALTEK_RTL8365MB` / `NET_DSA_REALTEK_SMI` 与 tagger `CONFIG_NET_DSA_TAG_RTL4_A` 由 `device/kernel-config` 补齐；`915` 补丁修复 SGMII MAC 选择。
 - **官方基准去重**：同名 / 同文件 / PROVIDES 冲突项以上游为准自动注释；`dnsmasq-full` 为本固件选定的 DNS/DHCP 实现（与 `dnsmasq` 互斥），`luci-ssl-openssl` / `libustream-openssl` 让位基座 mbedtls 变体。
+- **Feed 防漂移（fail-fast）**：滚动 feed 锁到已验证提交（`configs/feeds.lock`），同名包的生效来源统一声明（`configs/feed-precedence.txt`，如 `sing-box` 固定取 `small`）；构建时用 `feed-pin.sh` 固定提交、`feed-sources.sh` 删除其他 feed 的同名链接并重装校验，`dep-guard.sh` 在 `make defconfig` 后遍历所有选中包的版本化依赖做秒级校验。上游 packages 的旧版 `sing-box` 抢占链接、HomeProxy 要求 `>=1.15.0_alpha10` 导致“编译 3 小时后才失败”的问题因此被提前拦截。
+- **只交付 squashfs**：`configs/g68-hybrid.config` 显式关闭 `CONFIG_TARGET_ROOTFS_EXT4FS`、保留 `CONFIG_TARGET_ROOTFS_SQUASHFS=y`，并在 `make defconfig` 后二次压回校验；收集产物时拒绝任何 `*-ext4*.img.gz`。ext4 不压缩（未压缩 rootfs 树约 691 MiB，塞不进 500 MiB 分区），squashfs 压缩后约 100 MiB，故只发布 squashfs 镜像。
 - **多重自动化守卫**：`selftest.sh`（含补丁白名单 910/911/913/915 与 tagger 断言）、`hw-audit.sh`、`verify-maskrom.sh`、`package-guard`。
 
 ### 10.4 构建流水线
@@ -235,17 +238,20 @@ hw-audit.sh ──► 硬件级审核（DTS ↔ kernel-config ↔ 包集 ↔ u-b
    ▼
 package-guard ──► 以官方清单为基准去重（同名 / 同文件 / PROVIDES）
    ▼
-uboot-check ──► 只编译 u-boot + 三层产物断言
+uboot-check ──► feed-pin 固定提交 → 只编译 u-boot + 三层产物断言
    ▼
-build ──► 全量编译 → 镜像 → 分区表校验 → artifact → Release → 回写 state 锁
+build ──► feed-pin 锁定滚动 feed → feed-sources 固定同名包来源
+          → defconfig → 关闭 ext4 / 保留 squashfs → dep-guard 依赖版本守卫
+          → 全量编译 → 仅收集 squashfs 镜像 → 分区表校验
+          → artifact → Release → 回写 state 锁
 ```
 
 | 作业 | 职责 |
 | --- | --- |
 | `check-upstream` | 对比上游 commit 与 `state` 锁，决定是否构建 |
 | `prepare` | 应用设备层、静态自检、硬件审核、官方基准去重 |
-| `uboot-check` | 独立编译 u-boot，验证 MaskROM 链路 |
-| `build` | 全量编译、镜像校验、发布 Release、回写 `upstream.lock` |
+| `uboot-check` | `feed-pin` 固定提交后独立编译 u-boot，验证 MaskROM 链路 |
+| `build` | 固定 feed 提交与同名包来源、defconfig 归一化（关闭 ext4）、依赖版本守卫、全量编译、仅接受 squashfs 镜像并校验、发布 Release、回写 `upstream.lock` |
 
 触发方式：`push`（配置变更）、`workflow_dispatch`（手动）、`schedule`（每周检查）、`upstream-watch`（上游变化自动触发）。
 
@@ -261,7 +267,13 @@ device/
   i18n-overlay/          中文覆盖（条件投递）
   hw-exemptions.txt      硬件豁免清单（如 WiFi）
 scripts/                 apply / selftest / hw-audit / verify-maskrom / package-guard 等
-configs/g68-hybrid.config  完整包配置（含目标 / 设备 / 分区）
+  feed-pin.sh            按 feeds.lock 固定滚动 feed 提交（防 main 漂移）
+  feed-sources.sh        按 feed-precedence.txt 固定同名包的生效来源
+  dep-guard.sh           defconfig 后全包依赖版本一致性守卫（fail-fast）
+configs/
+  g68-hybrid.config      完整包配置（含目标 / 设备 / 分区，显式关闭 ext4 rootfs）
+  feeds.lock            滚动 feed 的已验证提交
+  feed-precedence.txt   同名包生效来源优先级
 .github/workflows/       build / maskrom-guard / package-guard / upstream-watch
 ```
 
@@ -274,8 +286,17 @@ git clone --depth 1 -b istoreos-24.10 https://github.com/istoreos/istoreos.git
 sh scripts/apply-device.sh istoreos          # 注入设备层
 sh scripts/selftest.sh istoreos              # 静态自检
 sh scripts/hw-audit.sh                       # 硬件审核
-cp configs/g68-hybrid.config istoreos/.config
-cd istoreos && make defconfig && make -j"$(nproc)"
+cd istoreos
+./scripts/feeds update -a
+sh ../scripts/feed-pin.sh . ../configs/feeds.lock            # 固定滚动 feed
+./scripts/feeds install -a
+sh ../scripts/feed-sources.sh . ../configs/feed-precedence.txt # 固定同名包来源
+cp ../configs/g68-hybrid.config .config
+make defconfig
+# defconfig 会把 EXT4FS 拉回 y，必须二次压回（自动构建已内置此步）
+sed -i -E 's/^CONFIG_TARGET_ROOTFS_EXT4FS=y$/# CONFIG_TARGET_ROOTFS_EXT4FS is not set/' .config
+sh ../scripts/dep-guard.sh . ../configs/feed-precedence.txt  # 依赖版本守卫
+make -j"$(nproc)"
 ```
 
 产物：`istoreos/bin/targets/rockchip/armv8/*nsy_g68-plus*sysupgrade.img.gz`
