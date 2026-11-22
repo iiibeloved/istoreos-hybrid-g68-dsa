@@ -152,7 +152,7 @@ LuCI → 系统 → 备份/升级 → 上传 .img.gz → 勾选「保留配置�
 7. **验证 MaskROM 能力（可选）。** 下次需要刷机时，用第五节的长按 Reset 流程验证一次即可；平时不必反复进 MaskROM。
 8. **完成配置后备份。** 系统 → 备份/升级 → 生成配置备份并妥善保存，便于日后恢复。
 9. **SMB 服务默认已配好，开箱即用。** 固件内置 `samba4-server` 与 `ksmbd-server` 两套 SMB 服务端，二者都监听 TCP **445** 端口，同时自启会争用端口。已通过首次启动脚本默认**启用 samba4、禁用 ksmbd 自启**，无需手动干预即可使用 SMB 共享。若确需改用 ksmbd：在「系统 → 启动项」中禁用 `samba4`、启用 `ksmbd` 并重启即可，SMB 文件共享功能本身不受影响。
-10. **菜单说明**：首页（QuickStart）固定为左侧第一项，网络向导（NetworkGuide）紧随其后；独立的“设置向导”（`luci-app-netwizard`）与多余的“管理面板”（Dashboard）已移除，不影响网络向导配网功能；服务菜单中 `wol` 显示为“网络唤醒”、`wolplus` 显示为“网络唤醒++”，便于区分。
+10. **菜单说明**：首页（QuickStart）固定为左侧第一项，网络向导（NetworkGuide）紧随其后；独立的“设置向导”（`luci-app-netwizard`）与多余的“管理面板”（Dashboard）已移除，不影响网络向导配网功能；服务菜单中 `wol` 显示为“网络唤醒”、`wolplus` 显示为“网络唤醒++”，便于区分。服务菜单中的 **Modem**（蜂窝网络）入口已隐藏——它来自 `luci-proto-modemmanager` 自带的 LuCI 菜单节点，本固件通过 `menu.d` 覆盖文件隐藏该入口，但 **4G/5G WWAN 拨号能力、脚本与 ACL 完整保留**，需要蜂窝网络时功能不受影响。
 11. **常见误区**：
    - 只接了 LAN 口、没接 WAN → 能进管理页但上不了外网，属正常，接好 WAN 即可。
    - 上级路由 LAN 口与本机 LAN 同为 `192.168.100.x` → 地址冲突，先在向导里把本机 LAN 改到其它网段。
@@ -201,6 +201,7 @@ LuCI → 系统 → 备份/升级 → 上传 .img.gz → 勾选「保留配置�
 | RKDevTool 找不到 MaskROM 设备 | 检查驱动、USB 线（须为数据线）与 OTG 口；长按 Reset 时序或改用短接触点法 |
 | 刷机中途报错 / 校验失败 | 重新“擦除所有”后勾选“强制按地址写”再刷；核对 sha256 |
 | 商城 / quickstart 无中文 | 商城与向导跟随上游，版本更新后自带；中文为条件投递 |
+| 服务菜单里找不到 Modem / Cellular Network | 这是刻意隐藏的（`menu.d` 覆盖），不影响 4G/5G 拨号；WWAN 配置仍在「网络 → 接口」中，脚本与权限均已保留 |
 
 ---
 
@@ -221,6 +222,7 @@ LuCI → 系统 → 备份/升级 → 上传 .img.gz → 勾选「保留配置�
 7. **Feed 防漂移、只交付 squashfs**：滚动 feed 锁到已验证提交、同名包来源固定、依赖版本守卫通过；显式关闭 ext4 rootfs，仅发布 squashfs 镜像（见 10.3）。
 8. **文本文件行尾 = LF**：`configs/*.config`、`scripts/*.sh`、workflow 与 `device/files/` 下脚本必须全部以 LF 存储，由 `selftest.sh` 第 0.5 节逐文件扫描 CR 并阻断构建（CRLF 会让 `grep -qx` 自检、`make defconfig` 与 `/bin/sh` 的 `set` 指令失效，见 10.3）；
 9. **核心网络包双阶段 fail-fast**：`verify-critical.sh` 在 `make defconfig` 后与最终 `packages.manifest` 各断言一次（DNS/DHCP/网络生命线），任一缺失即阻断构建 / 禁止发布，防上游 feed 漂移静默丢包（见 10.6）。
+10. **服务菜单 Modem 入口保持隐藏**：`zz-hide-modem.json` 覆盖必须投递且 `depends.fs` 恒假逻辑不被破坏（`selftest` 第 14 节断言；4G/5G WWAN 拨号功能保留）。
 
 ### 10.3 关键机制
 
@@ -232,7 +234,8 @@ LuCI → 系统 → 备份/升级 → 上传 .img.gz → 勾选「保留配置�
 - **Go 工具链放宽**：`ddns-go` / `xray` / `sing-box` 等 small feed 的 Go 包要求 Go >= 1.25（早期失败日志：`go: go.mod requires go >= 1.25.0 (running go 1.23.12)`）。`build.yml` 把 `feeds/packages/lang/golang/` 内的 `GOTOOLCHAIN=local` 统一替换为 `auto`，让各包自动获取匹配工具链，并保留「并行编译失败 → `-j1 V=s` 单线程重试」兜底，规避多包并发下载工具链的竞态。
 - **文本文件行尾固定为 LF（自检强制）**：`scripts/*.sh`、`configs/*.config`、`.github/workflows/*.yml` 与 `device/files/` 下的脚本必须全部以 LF 存储；`selftest.sh` 第 0.5 节在编译前逐文件扫描 CR 字符并阻断构建。历史上两类事故均由 CRLF 引起：`configs/g68-hybrid.config` 被写成 CRLF 时，行尾 `\r` 让 `grep -qx "CONFIG_PACKAGE_xxx=y"` 全项误报、`make defconfig` 静默丢符号；`scripts/dep-guard.sh` 被写成 CRLF 时，dash 把 `set -u\r` 解析为 `Illegal option`，build 作业在进入编译前直接退出。注意：通过 Git Data API 直接创建 blob 会绕过 git 客户端的行尾规范化，提交前务必核对远程 blob 的真实行尾。
 - **核心网络包双阶段守卫（fail-fast）**：`verify-critical.sh` 在两处拦截——① `build` 作业 `make defconfig` 之后查真实 `.config`（`dnsmasq-full=y` 且与 `dnsmasq` 互斥），② 收集产物时查最终 `packages.manifest`（`dnsmasq-full` / `firewall4` / `netifd`）。DSA 网络驱动为内核内建（`CONFIG_NET_DSA_*`，由 `device/kernel-config` 注入、`selftest` 第 6 节与 `hw-audit` H3 在源码层守护），故不出现在 opkg manifest；本脚本守的是用户态网络生命线。`selftest.sh` 第 13 节断言该脚本存在且两处挂载点齐全，防止守卫被误摘。历史上 swconfig 版曾因用户态工具未进最终镜像导致 LAN 拿不到 IP，这道守卫确保同类漂移在编译前 / 发布前即被拦截。
-- **多重自动化守卫**：`selftest.sh`（含补丁白名单 910/911/913/915 与 tagger 断言、守卫自身完整性）、`hw-audit.sh`、`verify-maskrom.sh`、`package-guard`、`verify-critical.sh`（双阶段网络包守卫）。
+- **服务菜单 Modem 项隐藏**：`device/files/usr/share/luci/menu.d/zz-hide-modem.json` 用 `menu.d` 后加载覆盖 + `depends.fs` 恒假机制隐藏 `admin/status/modemmanager` 节点（`zz-` 排序在 `luci-` 之后），只隐藏入口，不删包、不删拨号脚本 / ACL，4G/5G WWAN 功能保留。`selftest.sh` 第 14 节断言该覆盖文件存在且恒假逻辑完整，防止被误删后菜单重新露出。
+- **多重自动化守卫**：`selftest.sh`（含补丁白名单 910/911/913/915 与 tagger 断言、守卫自身完整性、Modem 覆盖完整性）、`hw-audit.sh`、`verify-maskrom.sh`、`package-guard`、`verify-critical.sh`（双阶段网络包守卫）。
 
 ### 10.4 构建流水线
 
@@ -277,6 +280,7 @@ device/
   kernel-patches/        910/911/913/914/915 内核补丁（915 为 SGMII MAC 选择修复）
   uboot/                 u-boot overlay（boot_mode、defconfig、板级 dts、版本守卫）
   i18n-overlay/          中文覆盖（条件投递）
+  files/                 落盘配置与 LuCI 菜单覆盖（含 zz-hide-modem.json 隐藏 Modem 入口）
   hw-exemptions.txt      硬件豁免清单（如 WiFi）
 scripts/                 apply / selftest / hw-audit / verify-maskrom / package-guard 等
   feed-pin.sh            按 feeds.lock 固定滚动 feed 提交（防 main 漂移）
@@ -302,6 +306,7 @@ configs/
 | LAN DHCP/DNS（`dnsmasq-full`）与网络生命线 | `configs/g68-hybrid.config` 显式选 `dnsmasq-full`、关闭 `dnsmasq` | `verify-critical.sh` 在 defconfig 后与最终 manifest 双阶段断言；缺包即阻断 |
 | 长按 Reset → MaskROM | u-boot overlay（`boot_mode.c` + ADC defconfig + 板级 dts），overlay-only 覆盖 | `verify-maskrom.sh` 源码 / 应用后 / 编译产物三层断言 + `maskrom-guard` workflow |
 | 只出 squashfs、分区标称 4096 MiB | config 显式关闭 ext4、build 二次压回 | 收集产物拒绝 `*-ext4*.img.gz` + 读 MBR 校验分区表 |
+| 服务菜单 Modem 入口隐藏 | `device/files/usr/share/luci/menu.d/zz-hide-modem.json`，`zz-` 排序在 `luci-` 之后覆盖 `depends.fs` 为恒假 | `selftest` 第 14 节断言覆盖文件存在且恒假逻辑完整；只隐藏入口，WWAN 拨号脚本 / ACL 保留 |
 | 上游变更自动重建 | `check-upstream` / `upstream-watch` 比较上游 commit 与 `state` 锁 | 上游变化即触发构建并回写锁；`schedule` 周期复查 |
 
 要点：网络能力分散在「内核符号（DSA 驱动）+ 用户态包（dnsmasq-full 等）+ 板级映射」三层，分别由源码层 selftest/hw-audit 与构建层 verify-critical 守护；MaskROM 由独立 u-boot overlay 与三层产物断言守护。二者都不依赖上游默认值，上游只提供基座，设备层以 overlay 交付且每轮重建都复验。

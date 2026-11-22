@@ -215,6 +215,16 @@ echo "== 13. 核心网络包 fail-fast 守卫自身完整性 =="
 [ "$(grep -c 'verify-critical.sh manifest' "$HERE/.github/workflows/build.yml")" -ge 1 ] \
 	&& ok "build.yml 已挂 manifest 守卫" || bad "build.yml 缺 manifest 网络包守卫"
 
+# 服务菜单 Modem 入口隐藏覆盖必须存在，且 depends.fs 恒假逻辑完整（zz- 排序在 luci- 之后）。
+# 防止上游更新/误操作把覆盖文件删掉后，Modem 菜单重新露出（包与拨号功能本身不受影响）。
+echo "== 14. 服务菜单 Modem 入口隐藏覆盖完整性 =="
+HM="$HERE/device/files/usr/share/luci/menu.d/zz-hide-modem.json"
+[ -s "$HM" ] && ok "zz-hide-modem.json 存在" || bad "缺 zz-hide-modem.json（Modem 菜单隐藏覆盖）"
+grep -q 'admin/status/modemmanager' "$HM" 2>/dev/null \
+	&& ok "覆盖节点 admin/status/modemmanager 正确" || bad "Modem 覆盖节点缺失"
+grep -q '"depends"' "$HM" 2>/dev/null && grep -q '"fs"' "$HM" 2>/dev/null && grep -q '"absent"' "$HM" 2>/dev/null \
+	&& ok "depends.fs 恒假逻辑完整（只隐藏入口，不删包）" || bad "Modem 覆盖的 depends.fs 恒假逻辑不完整"
+
 if [ "$FAIL" -gt 0 ]; then
 	echo "自检失败：$FAIL 项"
 	exit 1
