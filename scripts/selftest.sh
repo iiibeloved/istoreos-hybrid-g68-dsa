@@ -205,6 +205,16 @@ grep -q 'GOTOOLCHAIN=local/GOTOOLCHAIN=auto' "$HERE/.github/workflows/build.yml"
 	&& ok "build.yml 已把 GOTOOLCHAIN 改为 auto" \
 	|| bad "build.yml 未放宽 GOTOOLCHAIN（xray/sing-box/ddns-go 会编译失败）"
 
+# 核心网络包守卫脚本必须存在，且 build.yml 必须在 defconfig 后与 manifest 阶段各调用一次；
+# 防止上游更新/误操作把这道 fail-fast 守卫摘掉后，包漂移无人拦截。
+echo "== 13. 核心网络包 fail-fast 守卫自身完整性 =="
+[ -s "$HERE/scripts/verify-critical.sh" ] \
+	&& ok "verify-critical.sh 存在" || bad "缺 verify-critical.sh（网络包 fail-fast 守卫）"
+[ "$(grep -c 'verify-critical.sh config' "$HERE/.github/workflows/build.yml")" -ge 1 ] \
+	&& ok "build.yml 已挂 defconfig 后守卫" || bad "build.yml 缺 defconfig 后网络包守卫"
+[ "$(grep -c 'verify-critical.sh manifest' "$HERE/.github/workflows/build.yml")" -ge 1 ] \
+	&& ok "build.yml 已挂 manifest 守卫" || bad "build.yml 缺 manifest 网络包守卫"
+
 if [ "$FAIL" -gt 0 ]; then
 	echo "自检失败：$FAIL 项"
 	exit 1

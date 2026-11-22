@@ -220,6 +220,7 @@ LuCI → 系统 → 备份/升级 → 上传 .img.gz → 勾选「保留配置�
 6. **设备树与 MAC 保持参考配置原样**：DSA 驱动直接用主线 6.6 原生 `rtl8365mb`（已原生支持 RTL8367S），不整文件覆盖驱动；
 7. **Feed 防漂移、只交付 squashfs**：滚动 feed 锁到已验证提交、同名包来源固定、依赖版本守卫通过；显式关闭 ext4 rootfs，仅发布 squashfs 镜像（见 10.3）。
 8. **文本文件行尾 = LF**：`configs/*.config`、`scripts/*.sh`、workflow 与 `device/files/` 下脚本必须全部以 LF 存储，由 `selftest.sh` 第 0.5 节逐文件扫描 CR 并阻断构建（CRLF 会让 `grep -qx` 自检、`make defconfig` 与 `/bin/sh` 的 `set` 指令失效，见 10.3）；
+9. **核心网络包双阶段 fail-fast**：`verify-critical.sh` 在 `make defconfig` 后与最终 `packages.manifest` 各断言一次（DNS/DHCP/网络生命线），任一缺失即阻断构建 / 禁止发布，防上游 feed 漂移静默丢包（见 10.6）。
 
 ### 10.3 关键机制
 
@@ -230,7 +231,8 @@ LuCI → 系统 → 备份/升级 → 上传 .img.gz → 勾选「保留配置�
 - **只交付 squashfs**：`configs/g68-hybrid.config` 显式关闭 `CONFIG_TARGET_ROOTFS_EXT4FS`、保留 `CONFIG_TARGET_ROOTFS_SQUASHFS=y`，并在 `make defconfig` 后二次压回校验；收集产物时拒绝任何 `*-ext4*.img.gz`。ext4 不压缩（未压缩 rootfs 树约 691 MiB，塞不进 500 MiB 分区），squashfs 压缩后约 100 MiB，故只发布 squashfs 镜像。
 - **Go 工具链放宽**：`ddns-go` / `xray` / `sing-box` 等 small feed 的 Go 包要求 Go >= 1.25（早期失败日志：`go: go.mod requires go >= 1.25.0 (running go 1.23.12)`）。`build.yml` 把 `feeds/packages/lang/golang/` 内的 `GOTOOLCHAIN=local` 统一替换为 `auto`，让各包自动获取匹配工具链，并保留「并行编译失败 → `-j1 V=s` 单线程重试」兜底，规避多包并发下载工具链的竞态。
 - **文本文件行尾固定为 LF（自检强制）**：`scripts/*.sh`、`configs/*.config`、`.github/workflows/*.yml` 与 `device/files/` 下的脚本必须全部以 LF 存储；`selftest.sh` 第 0.5 节在编译前逐文件扫描 CR 字符并阻断构建。历史上两类事故均由 CRLF 引起：`configs/g68-hybrid.config` 被写成 CRLF 时，行尾 `\r` 让 `grep -qx "CONFIG_PACKAGE_xxx=y"` 全项误报、`make defconfig` 静默丢符号；`scripts/dep-guard.sh` 被写成 CRLF 时，dash 把 `set -u\r` 解析为 `Illegal option`，build 作业在进入编译前直接退出。注意：通过 Git Data API 直接创建 blob 会绕过 git 客户端的行尾规范化，提交前务必核对远程 blob 的真实行尾。
-- **多重自动化守卫**：`selftest.sh`（含补丁白名单 910/911/913/915 与 tagger 断言）、`hw-audit.sh`、`verify-maskrom.sh`、`package-guard`。
+- **核心网络包双阶段守卫（fail-fast）**：`verify-critical.sh` 在两处拦截——① `build` 作业 `make defconfig` 之后查真实 `.config`（`dnsmasq-full=y` 且与 `dnsmasq` 互斥），② 收集产物时查最终 `packages.manifest`（`dnsmasq-full` / `firewall4` / `netifd`）。DSA 网络驱动为内核内建（`CONFIG_NET_DSA_*`，由 `device/kernel-config` 注入、`selftest` 第 6 节与 `hw-audit` H3 在源码层守护），故不出现在 opkg manifest；本脚本守的是用户态网络生命线。`selftest.sh` 第 13 节断言该脚本存在且两处挂载点齐全，防止守卫被误摘。历史上 swconfig 版曾因用户态工具未进最终镜像导致 LAN 拿不到 IP，这道守卫确保同类漂移在编译前 / 发布前即被拦截。
+- **多重自动化守卫**：`selftest.sh`（含补丁白名单 910/911/913/915 与 tagger 断言、守卫自身完整性）、`hw-audit.sh`、`verify-maskrom.sh`、`package-guard`、`verify-critical.sh`（双阶段网络包守卫）。
 
 ### 10.4 构建流水线
 
@@ -249,8 +251,10 @@ package-guard ──► 以官方清单为基准去重（同名 / 同文件 / PR
 uboot-check ──► feed-pin 固定提交 → 只编译 u-boot + 三层产物断言
    ▼
 build ──► feed-pin 锁定滚动 feed → feed-sources 固定同名包来源
-          → defconfig → 关闭 ext4 / 保留 squashfs → dep-guard 依赖版本守卫
+          → defconfig → 关闭 ext4 / 保留 squashfs
+          → verify-critical(config) 网络包守卫 → dep-guard 依赖版本守卫
           → 全量编译 → 仅收集 squashfs 镜像 → 分区表校验
+          → verify-critical(manifest) 产物级守卫
           → artifact → Release → 回写 state 锁
 ```
 
@@ -259,7 +263,7 @@ build ──► feed-pin 锁定滚动 feed → feed-sources 固定同名包来�
 | `check-upstream` | 对比上游 commit 与 `state` 锁，决定是否构建 |
 | `prepare` | 应用设备层、静态自检、硬件审核、官方基准去重 |
 | `uboot-check` | `feed-pin` 固定提交后独立编译 u-boot，验证 MaskROM 链路 |
-| `build` | 固定 feed 提交与同名包来源、defconfig 归一化（关闭 ext4）、依赖版本守卫、全量编译、仅接受 squashfs 镜像并校验、发布 Release、回写 `upstream.lock` |
+| `build` | 固定 feed 提交与同名包来源、defconfig 归一化（关闭 ext4）、核心网络包双阶段守卫（defconfig 后 + manifest）、依赖版本守卫、全量编译、仅接受 squashfs 镜像并校验、发布 Release、回写 `upstream.lock` |
 
 触发方式：`push`（配置变更）、`workflow_dispatch`（手动）、`schedule`（每周检查）、`upstream-watch`（上游变化自动触发）。
 
@@ -278,12 +282,29 @@ scripts/                 apply / selftest / hw-audit / verify-maskrom / package-
   feed-pin.sh            按 feeds.lock 固定滚动 feed 提交（防 main 漂移）
   feed-sources.sh        按 feed-precedence.txt 固定同名包的生效来源
   dep-guard.sh           defconfig 后全包依赖版本一致性守卫（fail-fast）
+  verify-critical.sh     核心网络包双阶段守卫（defconfig 后 + manifest，fail-fast）
 configs/
   g68-hybrid.config      完整包配置（含目标 / 设备 / 分区，显式关闭 ext4 rootfs）
   feeds.lock            滚动 feed 的已验证提交
   feed-precedence.txt   同名包生效来源优先级
 .github/workflows/       build / maskrom-guard / package-guard / upstream-watch
 ```
+
+### 10.6 上游更新时，网络与 MaskROM 不变量如何被守住
+
+上游 iStoreOS 会持续更新（源码 commit 与滚动 feed）。下表逐项列出本固件的关键能力「靠什么投递、由哪道守卫拦截漂移」——**上游更新只会导致重建并复验，任何让 LAN/WAN 或 MaskROM 失效的漂移都会 fail-fast，不会发布带病固件。**
+
+| 不变量 | 投递层（如何落地） | 守卫层（漂移如何被拦截） |
+| --- | --- | --- |
+| 网口映射 `lan1`~`lan4` / `wan`、CPU=`gmac0` | 独立 `device/board.d/02_network_g68`（不改上游 `02_network`） | `selftest` 第 7 节校验映射内容一致 |
+| RTL8367S DSA 驱动（`rtl8365mb` + tagger RTL4_A） | `device/kernel-config` 注入 `config-6.6`，沿用主线 6.6 原生驱动、不整文件覆盖 | `selftest` 第 6 节 + `hw-audit` H3 交叉核对 DTS ↔ 内核符号；`apply-device.sh` 拒绝残留 DSA overlay |
+| SGMII MAC 选择（915 补丁） | `device/kernel-patches/915-*.patch` 在 dwmac-rk 中编程 `PIPE_GRF_XPCS_CON0` | `selftest` 补丁白名单 + `hw-audit` H4 按内容命中校验 |
+| LAN DHCP/DNS（`dnsmasq-full`）与网络生命线 | `configs/g68-hybrid.config` 显式选 `dnsmasq-full`、关闭 `dnsmasq` | `verify-critical.sh` 在 defconfig 后与最终 manifest 双阶段断言；缺包即阻断 |
+| 长按 Reset → MaskROM | u-boot overlay（`boot_mode.c` + ADC defconfig + 板级 dts），overlay-only 覆盖 | `verify-maskrom.sh` 源码 / 应用后 / 编译产物三层断言 + `maskrom-guard` workflow |
+| 只出 squashfs、分区标称 4096 MiB | config 显式关闭 ext4、build 二次压回 | 收集产物拒绝 `*-ext4*.img.gz` + 读 MBR 校验分区表 |
+| 上游变更自动重建 | `check-upstream` / `upstream-watch` 比较上游 commit 与 `state` 锁 | 上游变化即触发构建并回写锁；`schedule` 周期复查 |
+
+要点：网络能力分散在「内核符号（DSA 驱动）+ 用户态包（dnsmasq-full 等）+ 板级映射」三层，分别由源码层 selftest/hw-audit 与构建层 verify-critical 守护；MaskROM 由独立 u-boot overlay 与三层产物断言守护。二者都不依赖上游默认值，上游只提供基座，设备层以 overlay 交付且每轮重建都复验。
 
 ---
 
@@ -304,8 +325,11 @@ cp ../configs/g68-hybrid.config .config
 make defconfig
 # defconfig 会把 EXT4FS 拉回 y，必须二次压回（自动构建已内置此步）
 sed -i -E 's/^CONFIG_TARGET_ROOTFS_EXT4FS=y$/# CONFIG_TARGET_ROOTFS_EXT4FS is not set/' .config
+sh ../scripts/verify-critical.sh config .config             # 核心网络包守卫（defconfig 后）
 sh ../scripts/dep-guard.sh . ../configs/feed-precedence.txt  # 依赖版本守卫
 make -j"$(nproc)"
+# 编译完成后对最终产物再守一次（Release 阶段自动执行）
+sh ../scripts/verify-critical.sh manifest bin/targets/rockchip/armv8/*.manifest
 ```
 
 产物：`istoreos/bin/targets/rockchip/armv8/*nsy_g68-plus*sysupgrade.img.gz`
