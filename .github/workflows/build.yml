@@ -25,7 +25,8 @@ on:
         type: boolean
         default: true
 concurrency:
-  group: g68-hybrid-${{ github.ref }}
+  # v2 namespace: avoid stale stuck runs blocking fixed builds
+  group: g68-hybrid-v2-${{ github.ref }}
   cancel-in-progress: false
 permissions:
   contents: write
